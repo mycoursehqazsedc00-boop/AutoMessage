@@ -19,7 +19,7 @@ A fork of **AutoMessager V1.0** by The BOFH (Stewarta of Nordrassil). The origin
 | Component | Role | Notes |
 |---|---|---|
 | Client mods (DLLs) | **Not used** | AutoMessage calls no client-mod function. |
-| [WoWTranslate](https://github.com/sanjaygbhat/wow-translate) 2.2 or newer | **Optional** | Needed only for the translation switch. It provides `WoWTranslate_PrepareOutgoing` and `WoWTranslate_SendRaw`, and it needs its own `WoWTranslate.dll`. Without it AutoMessage works as a plain auto-messager and the switch is disabled. |
+| [WoWTranslate](https://github.com/mycoursehqazsedc00-boop/WoWTranslate) 2.2 or newer | **Optional** | Needed only for the translation switch. It provides `WoWTranslate_PrepareOutgoing` and `WoWTranslate_SendRaw`, and it needs its own `WoWTranslate.dll`. Without it AutoMessage works as a plain auto-messager and the switch is disabled. |
 
 ---
 
