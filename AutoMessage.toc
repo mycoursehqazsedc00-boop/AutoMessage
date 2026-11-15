@@ -2,7 +2,7 @@
 ## Title: AutoMessage
 ## Notes: Repeating chat messages with optional WoWTranslate translation. Please Don't Spam!
 ## Author: The BOFH (Stewarta of Nordrassil), AutoMessage contributors
-## Version: 2.0
+## Version: 2.1
 ## SavedVariables: AutoMessageDB, ticktime, channame, am, charname
 ## OptionalDeps: WoWTranslate
 

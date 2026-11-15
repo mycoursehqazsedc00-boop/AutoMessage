@@ -32,10 +32,14 @@ local function ButtonTooltip()
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
     GameTooltip:SetText("AutoMessage")
     GameTooltip:AddLine(AM.running and "Running" or "Stopped", 1, 1, 1)
-    GameTooltip:AddLine(AM.StatusLine(), 0.8, 0.8, 0.8)
-    GameTooltip:AddLine("Left-click: start / stop", 0.5, 1, 0.5)
+    for n = 1, AM.MAX_SLOTS do
+        if AM.Slot(n).enabled or AM.state[n].running then
+            GameTooltip:AddLine("Slot " .. n .. ": " .. AM.StatusLine(n), 0.8, 0.8, 0.8)
+        end
+    end
+    GameTooltip:AddLine("Left-click: start / stop all slots", 0.5, 1, 0.5)
     GameTooltip:AddLine("Right-click: settings", 0.5, 1, 0.5)
-    GameTooltip:AddLine("Ctrl-click: translation on / off", 0.5, 1, 0.5)
+    GameTooltip:AddLine("Ctrl-click: translation of the current slot", 0.5, 1, 0.5)
     GameTooltip:AddLine("Drag: move", 0.5, 1, 0.5)
     GameTooltip:Show()
 end
@@ -83,8 +87,9 @@ local function CreateButton()
         if arg1 == "RightButton" then
             AM.ShowConfig()
         elseif IsControlKeyDown and IsControlKeyDown() then
-            AM.SetTranslate(not AutoMessageDB.translate)
-            AM.Print("Translation with WoWTranslate: " .. (AutoMessageDB.translate and "ON" or "OFF") .. ".")
+            local s = AM.Slot()
+            AM.SetTranslate(not s.translate)
+            AM.Print(AM.Tag() .. "Translation with WoWTranslate: " .. (s.translate and "ON" or "OFF") .. ".")
         else
             AM.Toggle()
         end
@@ -137,7 +142,7 @@ end
 local function CreateConfig()
     config = CreateFrame("Frame", "AutoMessageConfigFrame", UIParent)
     config:SetWidth(380)
-    config:SetHeight(300)
+    config:SetHeight(372)
     config:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     config:SetFrameStrata("DIALOG")
     config:SetMovable(true)
@@ -159,32 +164,61 @@ local function CreateConfig()
     title:SetPoint("TOP", config, "TOP", 0, -16)
     title:SetText("AutoMessage " .. AM.VERSION)
 
-    Label(config, "Message (separate several with ;;):", 20, -42)
-    config.msg = Edit("AutoMessageMsgBox", config, 24, -62, 330, 1000)
+    -- slot tabs
+    config.tabs = {}
+    for n = 1, AM.MAX_SLOTS do
+        local tab = CreateFrame("Button", "AutoMessageSlotTab" .. n, config, "UIPanelButtonTemplate")
+        tab:SetWidth(40)
+        tab:SetHeight(22)
+        tab:SetPoint("TOPLEFT", config, "TOPLEFT", 20 + (n - 1) * 44, -42)
+        tab.slot = n
+        tab:SetScript("OnClick", function()
+            AM.ApplyFromUI()
+            AM.SelectSlot(this.slot)
+        end)
+        config.tabs[n] = tab
+    end
 
-    Label(config, "Channel:", 20, -92)
-    config.chan = Edit("AutoMessageChanBox", config, 24, -112, 190, 60)
-    Label(config, "say, yell, guild, party, raid, bg, w, 1-10 or a channel name (joined automatically)", 20, -136, true)
+    local enabled = CreateFrame("CheckButton", "AutoMessageEnabledCheck", config, "UICheckButtonTemplate")
+    enabled:SetPoint("TOPLEFT", config, "TOPLEFT", 204, -39)
+    enabled:SetScript("OnClick", function()
+        AM.SetEnabled(this:GetChecked() and true or false)
+    end)
+    local enabledText = getglobal("AutoMessageEnabledCheckText")
+    if enabledText then enabledText:SetText("Slot enabled") end
+    config.enabled = enabled
 
-    Label(config, "Interval (s):", 230, -92)
-    config.interval = Edit("AutoMessageIntervalBox", config, 234, -112, 60, 8)
+    Label(config, "Message (separate several with ;;):", 20, -76)
+    config.msg = Edit("AutoMessageMsgBox", config, 24, -96, 330, 1000)
 
-    Label(config, "Whisper to:", 20, -158)
-    config.whisper = Edit("AutoMessageWhisperBox", config, 24, -178, 190, 40)
+    Label(config, "Channel:", 20, -126)
+    config.chan = Edit("AutoMessageChanBox", config, 24, -146, 190, 60)
+    Label(config, "say, yell, guild, party, raid, bg, w, 1-10 or a channel name (joined automatically)", 20, -170, true)
+
+    Label(config, "Interval (s):", 230, -126)
+    config.interval = Edit("AutoMessageIntervalBox", config, 234, -146, 60, 8)
+
+    Label(config, "Whisper to:", 20, -192)
+    config.whisper = Edit("AutoMessageWhisperBox", config, 24, -212, 190, 40)
+
+    Label(config, "Limit (0 = none):", 230, -192)
+    config.limit = Edit("AutoMessageLimitBox", config, 234, -212, 60, 8)
 
     local check = CreateFrame("CheckButton", "AutoMessageTranslateCheck", config, "UICheckButtonTemplate")
-    check:SetPoint("TOPLEFT", config, "TOPLEFT", 16, -204)
+    check:SetPoint("TOPLEFT", config, "TOPLEFT", 16, -238)
     check:SetScript("OnClick", function()
         AM.SetTranslate(this:GetChecked() and true or false)
     end)
     local checkText = getglobal("AutoMessageTranslateCheckText")
-    if checkText then checkText:SetText("Translate with WoWTranslate") end
+    if checkText then checkText:SetText("Translate this slot with WoWTranslate") end
     config.check = check
 
     config.status = config:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    config.status:SetPoint("TOPLEFT", config, "TOPLEFT", 22, -236)
+    config.status:SetPoint("TOPLEFT", config, "TOPLEFT", 22, -270)
     config.status:SetWidth(340)
+    config.status:SetHeight(60)
     config.status:SetJustifyH("LEFT")
+    config.status:SetJustifyV("TOP")
 
     local start = CreateFrame("Button", "AutoMessageStartButton", config, "UIPanelButtonTemplate")
     start:SetWidth(90); start:SetHeight(22)
@@ -207,15 +241,18 @@ local function CreateConfig()
     config:SetScript("OnShow", function() AM.RefreshUI(true) end)
 end
 
+-- Copy the edit boxes into the CURRENT slot.
 function AM.ApplyFromUI()
     if not config then return end
     AM.SetMessages(config.msg:GetText())
     AM.SetChannel(config.chan:GetText())
     AM.SetInterval(config.interval:GetText())
     AM.SetWhisperTarget(config.whisper:GetText())
+    local limit = config.limit:GetText()
+    if limit and AM.Trim(limit) ~= "" then AM.SetLimit(limit) end
 end
 
--- fill = true: copy the saved values into the edit boxes
+-- fill = true: copy the saved values of the current slot into the edit boxes
 function AM.RefreshUI(fill)
     local db = AutoMessageDB
     if button then
@@ -226,20 +263,38 @@ function AM.RefreshUI(fill)
         end
     end
     if config then
+        local s = AM.Slot()
         if fill then
             config.msg:SetText(AM.GetMessagesText())
-            config.chan:SetText(db.channel)
-            config.interval:SetText(tostring(db.interval))
-            config.whisper:SetText(db.whisperTarget or "")
+            config.chan:SetText(s.channel)
+            config.interval:SetText(tostring(s.interval))
+            config.whisper:SetText(s.whisperTarget or "")
+            config.limit:SetText(tostring(s.limit or 0))
         end
-        config.check:SetChecked(db.translate and 1 or nil)
+        for n = 1, AM.MAX_SLOTS do
+            local label = tostring(n)
+            if AM.state[n].running then label = Colour(0.2, 1, 0.2, label)
+            elseif AM.Slot(n).enabled then label = Colour(1, 1, 1, label)
+            else label = Colour(0.5, 0.5, 0.5, label) end
+            if n == AM.current then label = "[" .. label .. "]" end
+            config.tabs[n]:SetText(label)
+        end
+        config.enabled:SetChecked(s.enabled and 1 or nil)
+        config.check:SetChecked(s.translate and 1 or nil)
         if AM.HasWoWTranslate() then
             config.check:Enable()
         else
             config.check:Disable()
         end
-        config.start:SetText(AM.running and "Stop" or "Start")
-        config.status:SetText(AM.StatusLine())
+        config.start:SetText(AM.running and "Stop all" or "Start")
+        local lines = {}
+        for n = 1, AM.MAX_SLOTS do
+            if AM.Slot(n).enabled or AM.state[n].running then
+                table.insert(lines, "Slot " .. n .. ": " .. AM.StatusLine(n))
+            end
+        end
+        if table.getn(lines) == 0 then lines[1] = "No slot is enabled." end
+        config.status:SetText(table.concat(lines, "\n"))
     end
 end
 
@@ -252,7 +307,7 @@ function AM.InitUI()
     CreateButton()
     CreateConfig()
     AM.RefreshUI(true)
-    -- keep the status line and countdown fresh while the window is open
+    -- keep the status lines and countdowns fresh while the window is open
     local ticker = CreateFrame("Frame", "AutoMessageTicker")
     local acc = 0
     ticker:SetScript("OnUpdate", function()
